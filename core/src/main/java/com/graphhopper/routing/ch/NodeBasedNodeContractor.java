@@ -116,7 +116,8 @@ class NodeBasedNodeContractor extends AbstractNodeContractor {
         CHEdgeIterator iter = allEdgeExplorer.setBaseNode(node);
         while (iter.next()) {
             // only increase the degree for edges going to equal level nodes (the current node is at maxLevel)
-            if (iter.getAdjNode() == maxLevel) {
+            // todo: for historic reasons increase degree also for all shortcuts, even though its wrong, see #1810
+            if (iter.isShortcut() || iter.getAdjNode() == maxLevel) {
                 degree++;
             }
             // todo: just because there is a shortcut it does not mean the neighbor is contracted AND

@@ -19,7 +19,6 @@ package com.graphhopper.routing.ch;
 
 import com.graphhopper.routing.DijkstraOneToMany;
 import com.graphhopper.routing.util.DefaultEdgeFilter;
-import com.graphhopper.routing.util.EdgeFilter;
 import com.graphhopper.routing.util.IgnoreNodeFilter;
 import com.graphhopper.routing.util.TraversalMode;
 import com.graphhopper.routing.weighting.Weighting;
@@ -42,7 +41,7 @@ class NodeBasedNodeContractor extends AbstractNodeContractor {
     private final AddShortcutHandler addScHandler = new AddShortcutHandler();
     private final CalcShortcutHandler calcScHandler = new CalcShortcutHandler();
     private final Params params = new Params();
-    private CHEdgeExplorer remainingEdgeExplorer;
+    private CHEdgeExplorer allEdgeExplorer;
     private IgnoreNodeFilter ignoreNodeFilter;
     private DijkstraOneToMany prepareAlgo;
     private int addedShortcutsCount;
@@ -68,8 +67,7 @@ class NodeBasedNodeContractor extends AbstractNodeContractor {
     public void initFromGraph() {
         super.initFromGraph();
         ignoreNodeFilter = new IgnoreNodeFilter(prepareGraph, maxLevel);
-        final EdgeFilter remainingNodesFilter = new RemainingNodesFilter(prepareGraph, DefaultEdgeFilter.allEdges(encoder));
-        remainingEdgeExplorer = prepareGraph.createEdgeExplorer(remainingNodesFilter);
+        allEdgeExplorer = prepareGraph.createEdgeExplorer(DefaultEdgeFilter.allEdges(encoder));
         prepareAlgo = new DijkstraOneToMany(prepareGraph, prepareWeighting, TraversalMode.NODE_BASED);
     }
 
@@ -96,6 +94,9 @@ class NodeBasedNodeContractor extends AbstractNodeContractor {
      */
     @Override
     public float calculatePriority(int node) {
+        if (prepareGraph.getLevel(node) != maxLevel) {
+            throw new IllegalArgumentException("Priority should only be calculated for not yet contracted nodes");
+        }
         CalcShortcutsResult calcShortcutsResult = calcShortcutCount(node);
 
         // # huge influence: the bigger the less shortcuts gets created and the faster is the preparation
@@ -112,13 +113,16 @@ class NodeBasedNodeContractor extends AbstractNodeContractor {
         // number of already contracted neighbors of v
         int contractedNeighbors = 0;
         int degree = 0;
-        CHEdgeIterator iter = remainingEdgeExplorer.setBaseNode(node);
+        CHEdgeIterator iter = allEdgeExplorer.setBaseNode(node);
         while (iter.next()) {
-            degree++;
-            if (prepareGraph.getLevel(iter.getBaseNode()) != maxLevel) {
-                throw new IllegalStateException("base level should be max level");
+            // only increase the degree for edges going to equal level nodes (the current node is at maxLevel)
+            if (iter.getAdjNode() == maxLevel) {
+                degree++;
             }
-            if (prepareGraph.getLevel(iter.getAdjNode()) < maxLevel) {
+            // todo: just because there is a shortcut it does not mean the neighbor is contracted AND
+            //       just because an edge is not a shortcut does not mean the neighbor is not contracted
+            //       see #1810
+            if (iter.isShortcut()) {
                 contractedNeighbors++;
             }
         }
@@ -443,26 +447,6 @@ class NodeBasedNodeContractor extends AbstractNodeContractor {
     private static class CalcShortcutsResult {
         int originalEdgesCount;
         int shortcutsCount;
-    }
-
-    private static class RemainingNodesFilter implements EdgeFilter {
-        private final CHGraph chGraph;
-        private final EdgeFilter edgeFilter;
-
-        public RemainingNodesFilter(CHGraph chGraph, EdgeFilter edgeFilter) {
-            this.chGraph = chGraph;
-            this.edgeFilter = edgeFilter;
-        }
-
-        @Override
-        public final boolean accept(EdgeIteratorState edgeState) {
-            if (!edgeFilter.accept(edgeState)) {
-                return false;
-            }
-            int base = edgeState.getBaseNode();
-            int adj = edgeState.getAdjNode();
-            return chGraph.getLevel(base) <= chGraph.getLevel(adj);
-        }
     }
 
     public static class Params {

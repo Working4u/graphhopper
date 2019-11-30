@@ -455,10 +455,6 @@ class NodeBasedNodeContractor extends AbstractNodeContractor {
             if (!edgeFilter.accept(edgeState)) {
                 return false;
             }
-            // minor performance improvement: shortcuts in wrong direction are disconnected, so no need to exclude them
-            if (((CHEdgeIteratorState) edgeState).isShortcut()) {
-                return true;
-            }
             int base = edgeState.getBaseNode();
             int adj = edgeState.getAdjNode();
             return chGraph.getLevel(base) <= chGraph.getLevel(adj);

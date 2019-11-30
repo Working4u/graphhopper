@@ -115,8 +115,12 @@ class NodeBasedNodeContractor extends AbstractNodeContractor {
         CHEdgeIterator iter = remainingEdgeExplorer.setBaseNode(node);
         while (iter.next()) {
             degree++;
-            if (iter.isShortcut())
+            if (prepareGraph.getLevel(iter.getBaseNode()) != maxLevel) {
+                throw new IllegalStateException("base level should be max level");
+            }
+            if (prepareGraph.getLevel(iter.getAdjNode()) < maxLevel) {
                 contractedNeighbors++;
+            }
         }
 
         // from shortcuts we can compute the edgeDifference

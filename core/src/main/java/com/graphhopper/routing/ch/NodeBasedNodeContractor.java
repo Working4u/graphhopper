@@ -18,7 +18,10 @@
 package com.graphhopper.routing.ch;
 
 import com.graphhopper.routing.DijkstraOneToMany;
-import com.graphhopper.routing.util.*;
+import com.graphhopper.routing.util.DefaultEdgeFilter;
+import com.graphhopper.routing.util.EdgeFilter;
+import com.graphhopper.routing.util.IgnoreNodeFilter;
+import com.graphhopper.routing.util.TraversalMode;
 import com.graphhopper.routing.weighting.Weighting;
 import com.graphhopper.storage.CHGraph;
 import com.graphhopper.storage.Graph;
@@ -65,13 +68,7 @@ class NodeBasedNodeContractor extends AbstractNodeContractor {
     public void initFromGraph() {
         super.initFromGraph();
         ignoreNodeFilter = new IgnoreNodeFilter(prepareGraph, maxLevel);
-        final EdgeFilter allFilter = DefaultEdgeFilter.allEdges(encoder);
-        final EdgeFilter remainingNodesFilter = new LevelEdgeFilter(prepareGraph) {
-            @Override
-            public final boolean accept(EdgeIteratorState edgeState) {
-                return super.accept(edgeState) && allFilter.accept(edgeState);
-            }
-        };
+        final EdgeFilter remainingNodesFilter = new RemainingNodesFilter(prepareGraph, DefaultEdgeFilter.allEdges(encoder));
         remainingEdgeExplorer = prepareGraph.createEdgeExplorer(remainingNodesFilter);
         prepareAlgo = new DijkstraOneToMany(prepareGraph, prepareWeighting, TraversalMode.NODE_BASED);
     }
@@ -442,6 +439,30 @@ class NodeBasedNodeContractor extends AbstractNodeContractor {
     private static class CalcShortcutsResult {
         int originalEdgesCount;
         int shortcutsCount;
+    }
+
+    private static class RemainingNodesFilter implements EdgeFilter {
+        private final CHGraph chGraph;
+        private final EdgeFilter edgeFilter;
+
+        public RemainingNodesFilter(CHGraph chGraph, EdgeFilter edgeFilter) {
+            this.chGraph = chGraph;
+            this.edgeFilter = edgeFilter;
+        }
+
+        @Override
+        public final boolean accept(EdgeIteratorState edgeState) {
+            if (!edgeFilter.accept(edgeState)) {
+                return false;
+            }
+            // minor performance improvement: shortcuts in wrong direction are disconnected, so no need to exclude them
+            if (((CHEdgeIteratorState) edgeState).isShortcut()) {
+                return true;
+            }
+            int base = edgeState.getBaseNode();
+            int adj = edgeState.getAdjNode();
+            return chGraph.getLevel(base) <= chGraph.getLevel(adj);
+        }
     }
 
     public static class Params {
